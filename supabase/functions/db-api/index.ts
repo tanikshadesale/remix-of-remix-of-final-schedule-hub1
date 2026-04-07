@@ -169,6 +169,7 @@ Deno.serve(async (req) => {
 
     if (path.startsWith("faculty/") && method === "DELETE") {
       const id = parseInt(path.split("/")[1]);
+      await sql`DELETE FROM timetable_slots WHERE faculty_id = ${id}`;
       await sql`DELETE FROM faculty WHERE id = ${id}`;
       return json({ success: true });
     }
