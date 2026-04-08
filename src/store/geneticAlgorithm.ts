@@ -863,10 +863,10 @@ export function generateMasterTimetable(input: GAInput): {
       const adaptiveMutation = hasHardViolations ? MUTATION_RATE * 2.5 : MUTATION_RATE;
 
       while (newPopulation.length < POPULATION_SIZE) {
-        const t1 = [randomChoice(population), randomChoice(population), randomChoice(population)];
-        const t2 = [randomChoice(population), randomChoice(population), randomChoice(population)];
-        const parent1 = t1.sort((a, b) => b.fitness - a.fitness)[0];
-        const parent2 = t2.sort((a, b) => b.fitness - a.fitness)[0];
+        const p1Idx = Math.floor(Math.random() * Math.min(10, population.length));
+        const p2Idx = Math.floor(Math.random() * Math.min(10, population.length));
+        const parent1 = population[p1Idx];
+        const parent2 = population[p2Idx];
 
         let child = crossover(parent1, parent2);
         child = mutate(child, input, adaptiveMutation);
