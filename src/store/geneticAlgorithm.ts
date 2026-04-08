@@ -564,11 +564,19 @@ function evaluateFitness(chromosome: Chromosome, input: GAInput): number {
       // H1: Faculty clash
       if (g1.facultyId && g1.facultyId === g2.facultyId) hardViolations++;
 
-      // H2: Division activity clash
+      // H2: Division activity clash — only labs of different batches allowed simultaneously
       if (g1.divisionId === g2.divisionId) {
-        const bothLab = (g1.type === 'lab' || g1.type === 'mini_project') && (g2.type === 'lab' || g2.type === 'mini_project');
-        if (bothLab && g1.batch !== g2.batch) {
-          // OK: different batches can have labs simultaneously
+        const g1IsLab = g1.type === 'lab' || g1.type === 'mini_project';
+        const g2IsLab = g2.type === 'lab' || g2.type === 'mini_project';
+        if (g1IsLab && g2IsLab && g1.batch !== g2.batch) {
+          // OK: different batches can have labs simultaneously (up to batchCount)
+          // Count how many batches at this slot
+          const div = input.divisions.find(d => d.id === g1.divisionId);
+          const maxBatches = div?.batchCount || 4;
+          const sameDivSlotGenes = genes.filter(g =>
+            g.divisionId === g1.divisionId && genesOverlap(g1, g) && (g.type === 'lab' || g.type === 'mini_project')
+          );
+          if (sameDivSlotGenes.length > maxBatches) hardViolations++;
         } else {
           hardViolations++;
         }
