@@ -124,7 +124,8 @@ function getRequiredSlots(subject: Subject, config: GenerationConfig): { theory:
     return { theory: 0, lab: 0, miniProject: 0, honours: subject.honoursLecturesPerWeek || 4 };
   }
   const theory = (subject.lectureType === 'theory' || subject.lectureType === 'theory_and_lab') ? 3 : 0;
-  const lab = (subject.lectureType === 'lab' || subject.lectureType === 'theory_and_lab') ? subject.labsPerWeek : 0;
+  // STRICT: exactly 1 lab per subject per batch per week
+  const lab = (subject.lectureType === 'lab' || subject.lectureType === 'theory_and_lab') ? 1 : 0;
   return { theory, lab, miniProject: 0, honours: 0 };
 }
 
@@ -164,16 +165,19 @@ function canPlace(tracker: OccupancyTracker, gene: Gene, input: GAInput): boolea
   const dur = gene.duration;
   const isLabType = gene.type === 'lab' || gene.type === 'mini_project';
 
-  // 1. Division-level: STRICT — at any minute, either all labs (different batches) OR one theory, never mixed
+  // 1. Division-level: STRICT — at any minute, either all labs (different batches, max batchCount) OR one theory, never mixed
+  const div = input.divisions.find(d => d.id === gene.divisionId);
+  const maxBatches = div?.batchCount || 4;
   for (let i = 0; i < dur; i++) {
     const key = `${gene.divisionId}|${gene.day}|${gene.timeSlot + i * SLOT_DURATION}`;
     const existing = tracker.divisionSlots.get(key);
     if (existing) {
-      // If existing is lab and new is lab with different batch → OK
-      if (isLabType && existing.type === 'lab' && gene.batch && !existing.batches.has(gene.batch)) {
+      // If existing is lab-type and new is lab-type with different batch and under max → OK
+      const existingIsLab = existing.type === 'lab' || existing.type === 'mini_project';
+      if (isLabType && existingIsLab && gene.batch && !existing.batches.has(gene.batch) && existing.batches.size < maxBatches) {
         continue;
       }
-      // Everything else is a clash (theory+theory, theory+lab, lab+theory, same batch lab)
+      // Everything else is a clash (theory+theory, theory+lab, lab+theory, same batch lab, over max batches)
       return false;
     }
   }
@@ -560,11 +564,19 @@ function evaluateFitness(chromosome: Chromosome, input: GAInput): number {
       // H1: Faculty clash
       if (g1.facultyId && g1.facultyId === g2.facultyId) hardViolations++;
 
-      // H2: Division activity clash
+      // H2: Division activity clash — only labs of different batches allowed simultaneously
       if (g1.divisionId === g2.divisionId) {
-        const bothLab = (g1.type === 'lab' || g1.type === 'mini_project') && (g2.type === 'lab' || g2.type === 'mini_project');
-        if (bothLab && g1.batch !== g2.batch) {
-          // OK: different batches can have labs simultaneously
+        const g1IsLab = g1.type === 'lab' || g1.type === 'mini_project';
+        const g2IsLab = g2.type === 'lab' || g2.type === 'mini_project';
+        if (g1IsLab && g2IsLab && g1.batch !== g2.batch) {
+          // OK: different batches can have labs simultaneously (up to batchCount)
+          // Count how many batches at this slot
+          const div = input.divisions.find(d => d.id === g1.divisionId);
+          const maxBatches = div?.batchCount || 4;
+          const sameDivSlotGenes = genes.filter(g =>
+            g.divisionId === g1.divisionId && genesOverlap(g1, g) && (g.type === 'lab' || g.type === 'mini_project')
+          );
+          if (sameDivSlotGenes.length > maxBatches) hardViolations++;
         } else {
           hardViolations++;
         }
