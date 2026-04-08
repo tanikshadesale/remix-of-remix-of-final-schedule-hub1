@@ -831,11 +831,11 @@ export function generateMasterTimetable(input: GAInput): {
   facultyTimetables: Record<string, TimetableSlot[]>;
   breakSchedule: Record<string, { morningBreak: string; lunchBreak: string }>;
 } {
-  const POPULATION_SIZE = 30;
-  const GENERATIONS = 150;
-  const ELITE_COUNT = 5;
-  const MUTATION_RATE = 0.15;
-  const MAX_RETRIES = 3;
+  const POPULATION_SIZE = 50;
+  const GENERATIONS = 300;
+  const ELITE_COUNT = 8;
+  const MUTATION_RATE = 0.12;
+  const MAX_RETRIES = 5;
 
   let bestOverall: Chromosome | null = null;
 
@@ -863,8 +863,16 @@ export function generateMasterTimetable(input: GAInput): {
       const adaptiveMutation = hasHardViolations ? MUTATION_RATE * 2.5 : MUTATION_RATE;
 
       while (newPopulation.length < POPULATION_SIZE) {
-        const p1Idx = Math.floor(Math.random() * Math.min(10, population.length));
-        const p2Idx = Math.floor(Math.random() * Math.min(10, population.length));
+        // Inject fresh constraint-aware chromosomes more aggressively
+        if (hasHardViolations && Math.random() < 0.4) {
+          const fresh = createChromosome(input);
+          fresh.fitness = evaluateFitness(fresh, input);
+          newPopulation.push(fresh);
+          continue;
+        }
+
+        const p1Idx = Math.floor(Math.random() * Math.min(15, population.length));
+        const p2Idx = Math.floor(Math.random() * Math.min(15, population.length));
         const parent1 = population[p1Idx];
         const parent2 = population[p2Idx];
 
@@ -872,13 +880,6 @@ export function generateMasterTimetable(input: GAInput): {
         child = mutate(child, input, adaptiveMutation);
         child.fitness = evaluateFitness(child, input);
         newPopulation.push(child);
-
-        // Inject fresh chromosomes if stuck with hard violations
-        if (hasHardViolations && Math.random() < 0.15) {
-          const fresh = createChromosome(input);
-          fresh.fitness = evaluateFitness(fresh, input);
-          newPopulation.push(fresh);
-        }
       }
 
       population = newPopulation.slice(0, POPULATION_SIZE);
