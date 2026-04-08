@@ -124,7 +124,8 @@ function getRequiredSlots(subject: Subject, config: GenerationConfig): { theory:
     return { theory: 0, lab: 0, miniProject: 0, honours: subject.honoursLecturesPerWeek || 4 };
   }
   const theory = (subject.lectureType === 'theory' || subject.lectureType === 'theory_and_lab') ? 3 : 0;
-  const lab = (subject.lectureType === 'lab' || subject.lectureType === 'theory_and_lab') ? subject.labsPerWeek : 0;
+  // STRICT: exactly 1 lab per subject per batch per week
+  const lab = (subject.lectureType === 'lab' || subject.lectureType === 'theory_and_lab') ? 1 : 0;
   return { theory, lab, miniProject: 0, honours: 0 };
 }
 
@@ -164,16 +165,19 @@ function canPlace(tracker: OccupancyTracker, gene: Gene, input: GAInput): boolea
   const dur = gene.duration;
   const isLabType = gene.type === 'lab' || gene.type === 'mini_project';
 
-  // 1. Division-level: STRICT — at any minute, either all labs (different batches) OR one theory, never mixed
+  // 1. Division-level: STRICT — at any minute, either all labs (different batches, max batchCount) OR one theory, never mixed
+  const div = input.divisions.find(d => d.id === gene.divisionId);
+  const maxBatches = div?.batchCount || 4;
   for (let i = 0; i < dur; i++) {
     const key = `${gene.divisionId}|${gene.day}|${gene.timeSlot + i * SLOT_DURATION}`;
     const existing = tracker.divisionSlots.get(key);
     if (existing) {
-      // If existing is lab and new is lab with different batch → OK
-      if (isLabType && existing.type === 'lab' && gene.batch && !existing.batches.has(gene.batch)) {
+      // If existing is lab-type and new is lab-type with different batch and under max → OK
+      const existingIsLab = existing.type === 'lab' || existing.type === 'mini_project';
+      if (isLabType && existingIsLab && gene.batch && !existing.batches.has(gene.batch) && existing.batches.size < maxBatches) {
         continue;
       }
-      // Everything else is a clash (theory+theory, theory+lab, lab+theory, same batch lab)
+      // Everything else is a clash (theory+theory, theory+lab, lab+theory, same batch lab, over max batches)
       return false;
     }
   }
