@@ -308,15 +308,15 @@ function createChromosome(input: GAInput): Chromosome {
       f.subjects.some(s => subj && s.toLowerCase() === subj.name.toLowerCase())
     );
     const isLabType = type === 'lab' || type === 'mini_project';
-    const deptRooms = isLabType
-      ? labs.filter(l => !l.departmentId || l.departmentId === departmentId)
-      : classrooms.filter(c => !c.departmentId || c.departmentId === departmentId);
+    const deptClassrooms = classrooms.filter(c => !c.departmentId || c.departmentId === departmentId);
+    const deptLabs = labs.filter(l => !l.departmentId || l.departmentId === departmentId);
 
     const sortedSlots = getSortedSlots(divId, day, duration, divBreak);
 
     for (const slot of sortedSlots) {
       for (const fac of shuffleArray(eligibleFaculty)) {
-        for (const room of shuffleArray(deptRooms)) {
+        const rooms = isLabType ? shuffleArray(deptLabs) : shuffleArray(deptClassrooms);
+        for (const room of rooms) {
           const gene: Gene = {
             day, timeSlot: slot, subjectId, divisionId: divId,
             facultyId: fac.id,
