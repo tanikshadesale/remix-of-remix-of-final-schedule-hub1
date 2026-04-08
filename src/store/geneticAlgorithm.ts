@@ -552,76 +552,68 @@ function evaluateFitness(chromosome: Chromosome, input: GAInput): number {
     divDayGenes.get(key)!.push(g);
   }
 
-  // ═══ HARD CONSTRAINTS ═══
+  // ═══ HARD CONSTRAINTS (optimized: group by day to reduce comparisons) ═══
 
-  // H1-H4: Pairwise clash checks
-  for (let i = 0; i < genes.length; i++) {
-    const g1 = genes[i];
-    for (let j = i + 1; j < genes.length; j++) {
-      const g2 = genes[j];
-      if (!genesOverlap(g1, g2)) continue;
+  const dayGenes: Map<string, Gene[]> = new Map();
+  for (const g of genes) {
+    if (!dayGenes.has(g.day)) dayGenes.set(g.day, []);
+    dayGenes.get(g.day)!.push(g);
+  }
 
-      // H1: Faculty clash
-      if (g1.facultyId && g1.facultyId === g2.facultyId) hardViolations++;
+  for (const [, dGenes] of dayGenes) {
+    for (let i = 0; i < dGenes.length; i++) {
+      const g1 = dGenes[i];
+      for (let j = i + 1; j < dGenes.length; j++) {
+        const g2 = dGenes[j];
+        if (!genesOverlap(g1, g2)) continue;
 
-      // H2: Division activity clash — only labs of different batches allowed simultaneously
-      if (g1.divisionId === g2.divisionId) {
-        const g1IsLab = g1.type === 'lab' || g1.type === 'mini_project';
-        const g2IsLab = g2.type === 'lab' || g2.type === 'mini_project';
-        if (g1IsLab && g2IsLab && g1.batch !== g2.batch) {
-          // OK: different batches can have labs simultaneously (up to batchCount)
-          // Count how many batches at this slot
-          const div = input.divisions.find(d => d.id === g1.divisionId);
-          const maxBatches = div?.batchCount || 4;
-          const sameDivSlotGenes = genes.filter(g =>
-            g.divisionId === g1.divisionId && genesOverlap(g1, g) && (g.type === 'lab' || g.type === 'mini_project')
-          );
-          if (sameDivSlotGenes.length > maxBatches) hardViolations++;
-        } else {
-          hardViolations++;
+        if (g1.facultyId && g1.facultyId === g2.facultyId) hardViolations++;
+
+        if (g1.divisionId === g2.divisionId) {
+          const g1IsLab = g1.type === 'lab' || g1.type === 'mini_project';
+          const g2IsLab = g2.type === 'lab' || g2.type === 'mini_project';
+          if (g1IsLab && g2IsLab && g1.batch !== g2.batch) {
+            const div = input.divisions.find(d => d.id === g1.divisionId);
+            const maxBatches = div?.batchCount || 4;
+            const sameDivSlotGenes = dGenes.filter(g =>
+              g.divisionId === g1.divisionId && genesOverlap(g1, g) && (g.type === 'lab' || g.type === 'mini_project')
+            );
+            if (sameDivSlotGenes.length > maxBatches) hardViolations++;
+          } else {
+            hardViolations++;
+          }
         }
+
+        if (g1.classroomId && g1.classroomId === g2.classroomId) hardViolations++;
+        if (g1.labId && g1.labId === g2.labId) hardViolations++;
       }
-
-      // H3: Classroom clash
-      if (g1.classroomId && g1.classroomId === g2.classroomId) hardViolations++;
-
-      // H4: Lab room clash
-      if (g1.labId && g1.labId === g2.labId) hardViolations++;
     }
+  }
 
-    // H5: Faculty availability
+  // Per-gene checks (H5-H10)
+  for (const g1 of genes) {
     if (g1.facultyId) {
       const fac = allFaculty.find(f => f.id === g1.facultyId);
       if (fac && !isDayAvailable(fac.availability, g1.day, g1.timeSlot, g1.timeSlot + g1.duration * SLOT_DURATION))
         hardViolations++;
     }
-
-    // H6: Classroom availability
     if (g1.classroomId) {
       const room = classrooms.find(c => c.id === g1.classroomId);
       if (room && !isDayAvailable(room.availability, g1.day, g1.timeSlot, g1.timeSlot + g1.duration * SLOT_DURATION))
         hardViolations++;
     }
-
-    // H7: Lab availability
     if (g1.labId) {
       const lab = allLabs.find(l => l.id === g1.labId);
       if (lab && !isDayAvailable(lab.availability, g1.day, g1.timeSlot, g1.timeSlot + g1.duration * SLOT_DURATION))
         hardViolations++;
     }
-
-    // H8: Lab must be exactly 2 continuous hours
     if (g1.type === 'lab' && g1.duration !== 2) hardViolations++;
-
-    // H9: No faculty assigned (must have a faculty)
     if (!g1.facultyId) hardViolations++;
-
-    // H10: Theory must have classroom, lab must have lab room
     if ((g1.type === 'theory' || g1.type === 'honours') && !g1.classroomId) hardViolations++;
     if ((g1.type === 'lab' || g1.type === 'mini_project') && !g1.labId) hardViolations++;
   }
 
-  // H11: Completeness — correct number of theory lectures and labs per subject per division
+  // H11: Completeness
   for (const div of input.divisions) {
     const divGenes = genes.filter(g => g.divisionId === div.id);
     const yearSubjects = subjects.filter(s => s.departmentId === input.departmentId && s.year === div.year);
@@ -630,11 +622,9 @@ function evaluateFitness(chromosome: Chromosome, input: GAInput): number {
       if (subject.type === 'mini_project' || subject.type === 'honours') continue;
       const required = getRequiredSlots(subject, config);
 
-      // Theory count
       const theoryCount = divGenes.filter(g => g.subjectId === subject.id && g.type === 'theory').length;
       if (theoryCount !== required.theory) hardViolations += Math.abs(theoryCount - required.theory);
 
-      // Lab count per batch
       if (required.lab > 0) {
         for (let b = 1; b <= div.batchCount; b++) {
           const labCount = divGenes.filter(g => g.subjectId === subject.id && g.type === 'lab' && g.batch === `B${b}`).length;
