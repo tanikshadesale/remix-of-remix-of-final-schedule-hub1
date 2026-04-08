@@ -831,11 +831,11 @@ export function generateMasterTimetable(input: GAInput): {
   facultyTimetables: Record<string, TimetableSlot[]>;
   breakSchedule: Record<string, { morningBreak: string; lunchBreak: string }>;
 } {
-  const POPULATION_SIZE = 30;
-  const GENERATIONS = 150;
-  const ELITE_COUNT = 5;
-  const MUTATION_RATE = 0.15;
-  const MAX_RETRIES = 3;
+  const POPULATION_SIZE = 50;
+  const GENERATIONS = 300;
+  const ELITE_COUNT = 8;
+  const MUTATION_RATE = 0.12;
+  const MAX_RETRIES = 5;
 
   let bestOverall: Chromosome | null = null;
 
